@@ -297,8 +297,20 @@ def _load_xlsx(path: Path, *, paygroup: str) -> list[Requirement]:
 
         for sheet_name in data_sheets:
             ws = wb[sheet_name]
+
+            # Skip hidden/veryHidden sheets (lookup tables, reference data)
+            if getattr(ws, "sheet_state", "visible") != "visible":
+                continue
+
             rows = [tuple(r) for r in ws.iter_rows(values_only=True)]
             if not rows:
+                continue
+
+            # Minimum-validity guard: skip sheets where fewer than 15% of
+            # non-blank rows have content in col 2 (the description column).
+            # Catches pure lookup tables that slipped through the name filter.
+            non_blank = [r for r in rows[1:] if not _is_blank_row(r)]
+            if non_blank and sum(1 for r in non_blank if _cell(r, 2)) / len(non_blank) < 0.15:
                 continue
 
             sheet_las = _extract_sheet_las(rows[0])
